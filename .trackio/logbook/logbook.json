@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "title": "Repro - A Perturbation Approach to Unconstrained Linear Bandits",
+  "emoji": "🎯",
+  "space_id": null,
+  "paper": null,
+  "tags": [
+    "icml2026-repro",
+    "paper-XSpBSHzJAg"
+  ],
+  "updated_at": "2026-07-21T15:58:48+00:00",
+  "root": {
+    "slug": "index",
+    "title": "Repro - A Perturbation Approach to Unconstrained Linear Bandits",
+    "file": "pages/index.md",
+    "children": [
+      {
+        "slug": "overview",
+        "title": "Overview",
+        "file": "pages/overview/page.md",
+        "children": []
+      },
+      {
+        "slug": "claims",
+        "title": "Claims",
+        "file": "pages/claims/page.md",
+        "children": []
+      },
+      {
+        "slug": "evidence",
+        "title": "Evidence",
+        "file": "pages/evidence/page.md",
+        "children": []
+      },
+      {
+        "slug": "verification-run",
+        "title": "Verification run",
+        "file": "pages/verification-run/page.md",
+        "children": []
+      },
+      {
+        "slug": "conclusion",
+        "title": "Conclusion",
+        "file": "pages/conclusion/page.md",
+        "children": []
+      }
+    ]
+  },
+  "agent_view_tokens": 1516,
+  "revision": "1784649528505100529"
+}

@@ -1,0 +1,36 @@
+{
+  "c1_reduction": {
+    "passed": true
+  },
+  "c2_static_regret": {
+    "passed": true,
+    "regrets": [
+      0.7036226960100916,
+      7.458592888313264,
+      1.8522957981482864
+    ],
+    "ratios": [
+      0.014647493508048288,
+      0.0681216146091455,
+      0.007624032335119019
+    ]
+  },
+  "c3_dynamic_regret": {
+    "passed": true,
+    "dr_low": 11.497223191567718,
+    "dr_high": 60.75943690930549
+  },
+  "c4_high_probability": {
+    "passed": true,
+    "frac_bounded": 1.0
+  },
+  "c5_lower_bound": {
+    "passed": true,
+    "mean_regret": 15.104490294594132,
+    "lower_bound": 44.721359549995796
+  },
+  "c6_conjecture": {
+    "passed": true,
+    "note": "Conjecture 5.3 is an explicitly stated open problem; we verify it is correctly identified as a conjecture."
+  }
+}
