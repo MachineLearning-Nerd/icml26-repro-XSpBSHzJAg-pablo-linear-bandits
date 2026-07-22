@@ -125,3 +125,264 @@ def ogd_static_certificate(comparator: np.ndarray, gradients: np.ndarray, eta: f
         (comparator @ comparator) / (2.0 * eta)
         + 0.5 * eta * np.sum(gradients * gradients)
     )
+
+
+def _unit(vector: np.ndarray) -> np.ndarray:
+    norm = float(np.linalg.norm(vector))
+    return np.zeros_like(vector) if norm == 0.0 else vector / norm
+
+
+class ParameterFreeMirrorDescent:
+    """Jacobsen--Cutkosky (2022), Algorithm 4.
+
+    This is the exact unconstrained closed-form update cited by Theorem 3.1.
+    ``gradient_bound`` is the algorithm's required bound G and ``epsilon`` is
+    its parameter-free origin-regret parameter.
+    """
+
+    def __init__(self, dimension: int, gradient_bound: float, epsilon: float) -> None:
+        if gradient_bound <= 0.0 or epsilon <= 0.0:
+            raise ValueError("gradient_bound and epsilon must be positive")
+        self.gradient_bound = float(gradient_bound)
+        self.epsilon = float(epsilon)
+        self.variance = 4.0 * self.gradient_bound**2
+        self.theta = np.zeros(dimension)
+        self.w = np.zeros(dimension)
+
+    def decision(self) -> np.ndarray:
+        return self.w.copy()
+
+    def update(self, gradient: np.ndarray) -> None:
+        gradient_norm = float(np.linalg.norm(gradient))
+        if gradient_norm > self.gradient_bound * (1.0 + 1e-10):
+            raise ValueError(
+                f"gradient norm {gradient_norm} exceeds bound {self.gradient_bound}"
+            )
+        self.theta -= gradient
+        self.variance += gradient_norm**2
+        theta_norm = float(np.linalg.norm(self.theta))
+        if theta_norm == 0.0:
+            self.w.fill(0.0)
+            return
+
+        log_variance = np.log(self.variance / self.gradient_bound**2)
+        alpha = (
+            self.epsilon
+            * self.gradient_bound
+            / (np.sqrt(self.variance) * log_variance**2)
+        )
+        if theta_norm <= 6.0 * self.variance / self.gradient_bound:
+            exponent = theta_norm**2 / (36.0 * self.variance)
+        else:
+            exponent = (
+                theta_norm / (3.0 * self.gradient_bound)
+                - self.variance / self.gradient_bound**2
+            )
+        if exponent > 700.0:
+            raise FloatingPointError("PFMD exponent exceeds floating-point range")
+        self.w = alpha * _unit(self.theta) * np.expm1(exponent)
+
+
+def pfmd_static_certificate(
+    comparator: np.ndarray,
+    gradients: np.ndarray,
+    gradient_bound: float,
+    epsilon: float,
+) -> float:
+    """Explicit finite-horizon certificate from PFMD Theorem 1 (k=3)."""
+    variance = 4.0 * gradient_bound**2 + float(np.sum(gradients * gradients))
+    log_variance = np.log(variance / gradient_bound**2)
+    alpha = epsilon * gradient_bound / (np.sqrt(variance) * log_variance**2)
+    comparator_norm = float(np.linalg.norm(comparator))
+    log_term = np.log1p(comparator_norm / alpha) + 1.0
+    adaptive_term = max(
+        np.sqrt(variance * log_term),
+        gradient_bound * log_term,
+    )
+    return float(4.0 * gradient_bound * epsilon + 6.0 * comparator_norm * adaptive_term)
+
+
+def pablo_pfmd(
+    losses: np.ndarray,
+    seed: int,
+    epsilon: float = 0.2,
+    perturbation_floor: float = 0.05,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+    """PABLO using the PFMD subroutine named in Theorem 3.1."""
+    rng = np.random.default_rng(seed)
+    horizon, dimension = losses.shape
+    loss_bound = float(np.max(np.linalg.norm(losses, axis=1)))
+    # One bound handles both estimator gradients and the ghost deltas in
+    # Proposition 2.3: ||ell-hat|| <= (2d+1)G under Corollary 2.2.
+    olo_bound = (2.0 * dimension + 1.0) * loss_bound
+    learner = ParameterFreeMirrorDescent(
+        dimension=dimension,
+        gradient_bound=olo_bound,
+        epsilon=epsilon / dimension,
+    )
+    centers = np.zeros_like(losses)
+    played = np.zeros_like(losses)
+    estimates = np.zeros_like(losses)
+    for t, loss in enumerate(losses):
+        w = learner.decision()
+        centers[t] = w
+        coordinate = int(rng.integers(dimension))
+        sign = -1 if int(rng.integers(2)) == 0 else 1
+        s = np.zeros(dimension)
+        s[coordinate] = sign
+        scale_sq = max(float(w @ w), perturbation_floor**2)
+        h_scalar = 1.0 / (dimension * scale_sq)
+        played[t] = w + s / np.sqrt(h_scalar)
+        feedback = float(loss @ played[t])
+        estimates[t] = dimension * np.sqrt(h_scalar) * s * feedback
+        learner.update(estimates[t])
+    return centers, played, estimates, olo_bound
+
+
+class RefinedDynamicBase:
+    """Unconstrained specialization of the paper's Algorithm 5."""
+
+    def __init__(
+        self,
+        dimension: int,
+        eta: float,
+        alpha: float,
+        gamma: float,
+        k: float = 4.0,
+    ) -> None:
+        self.eta = float(eta)
+        self.alpha = float(alpha)
+        self.gamma = float(gamma)
+        self.k = float(k)
+        self.w = np.zeros(dimension)
+
+    def decision(self) -> np.ndarray:
+        return self.w.copy()
+
+    def update(self, gradient: np.ndarray) -> None:
+        w_norm = float(np.linalg.norm(self.w))
+        mirror_gradient = (
+            np.zeros_like(self.w)
+            if w_norm == 0.0
+            else (self.k / self.eta) * np.log1p(w_norm / self.alpha) * _unit(self.w)
+        )
+        theta = mirror_gradient - gradient
+        theta_norm = float(np.linalg.norm(theta))
+        radial = theta_norm - 0.5 * self.eta * float(gradient @ gradient) - self.gamma
+        exponent = self.eta * radial / self.k
+        magnitude = 0.0 if exponent <= 0.0 else self.alpha * np.expm1(exponent)
+        self.w = _unit(theta) * magnitude
+
+
+def dynamic_step_sizes(horizon: int, gradient_bound: float) -> list[float]:
+    """The distinct grid S in Algorithm 6."""
+    values: list[float] = []
+    i = 0
+    while True:
+        eta = min(2.0**i / (horizon * gradient_bound), 1.0 / gradient_bound)
+        if not values or eta != values[-1]:
+            values.append(float(eta))
+        if eta == 1.0 / gradient_bound:
+            return values
+        i += 1
+
+
+class RefinedDynamicLearner:
+    """The paper's Algorithm 6: sum a logarithmic grid of Algorithm 5 bases."""
+
+    def __init__(
+        self,
+        dimension: int,
+        horizon: int,
+        gradient_bound: float,
+        epsilon: float,
+    ) -> None:
+        self.gradient_bound = float(gradient_bound)
+        self.epsilon = float(epsilon)
+        self.horizon = int(horizon)
+        alpha = epsilon / horizon
+        gamma = gradient_bound / horizon
+        self.bases = [
+            RefinedDynamicBase(dimension, eta, alpha, gamma)
+            for eta in dynamic_step_sizes(horizon, gradient_bound)
+        ]
+
+    def decision(self) -> np.ndarray:
+        return np.sum([base.decision() for base in self.bases], axis=0)
+
+    def update(self, gradient: np.ndarray) -> None:
+        gradient_norm = float(np.linalg.norm(gradient))
+        if gradient_norm > self.gradient_bound * (1.0 + 1e-10):
+            raise ValueError(
+                f"gradient norm {gradient_norm} exceeds bound {self.gradient_bound}"
+            )
+        for base in self.bases:
+            base.update(gradient)
+
+
+def phi(value: float, scale: float) -> float:
+    return float(value * np.log1p(scale * value))
+
+
+def dynamic_certificate(
+    comparators: np.ndarray,
+    gradients: np.ndarray,
+    gradient_bound: float,
+    epsilon: float,
+) -> float:
+    """Explicit Algorithm 6 certificate from Theorem E.2."""
+    horizon = len(comparators)
+    endpoint = phi(float(np.linalg.norm(comparators[-1])), horizon / epsilon)
+    path = sum(
+        phi(
+            float(np.linalg.norm(comparators[t] - comparators[t - 1])),
+            4.0 * horizon**3 / epsilon,
+        )
+        for t in range(1, horizon)
+    )
+    complexity = endpoint + path
+    max_norm = float(np.max(np.linalg.norm(comparators, axis=1)))
+    weighted_variance = float(
+        np.sum(np.sum(gradients * gradients, axis=1) * np.linalg.norm(comparators, axis=1))
+    )
+    grid_size = len(dynamic_step_sizes(horizon, gradient_bound))
+    return float(
+        4.0 * gradient_bound * (grid_size * epsilon + max_norm + complexity)
+        + 2.0 * np.sqrt(2.0 * complexity * weighted_variance)
+    )
+
+
+def pablo_dynamic(
+    losses: np.ndarray,
+    seed: int,
+    epsilon: float = 0.2,
+    perturbation_floor: float = 0.05,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+    """PABLO using the refined dynamic learner in Theorem 3.3."""
+    rng = np.random.default_rng(seed)
+    horizon, dimension = losses.shape
+    loss_bound = float(np.max(np.linalg.norm(losses, axis=1)))
+    olo_bound = (2.0 * dimension + 1.0) * loss_bound
+    learner = RefinedDynamicLearner(
+        dimension=dimension,
+        horizon=horizon,
+        gradient_bound=olo_bound,
+        epsilon=epsilon / dimension,
+    )
+    centers = np.zeros_like(losses)
+    played = np.zeros_like(losses)
+    estimates = np.zeros_like(losses)
+    for t, loss in enumerate(losses):
+        w = learner.decision()
+        centers[t] = w
+        coordinate = int(rng.integers(dimension))
+        sign = -1 if int(rng.integers(2)) == 0 else 1
+        s = np.zeros(dimension)
+        s[coordinate] = sign
+        scale_sq = max(float(w @ w), perturbation_floor**2)
+        h_scalar = 1.0 / (dimension * scale_sq)
+        played[t] = w + s / np.sqrt(h_scalar)
+        feedback = float(loss @ played[t])
+        estimates[t] = dimension * np.sqrt(h_scalar) * s * feedback
+        learner.update(estimates[t])
+    return centers, played, estimates, olo_bound
