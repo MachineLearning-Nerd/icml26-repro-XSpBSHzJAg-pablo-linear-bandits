@@ -3,49 +3,28 @@
 
 ---
 <!-- trackio-cell
-{"type": "markdown", "id": "cell_b85a6e6dbd3a", "created_at": "2026-07-21T15:58:42+00:00", "title": "Verification output (last 40 lines)"}
+{"type": "markdown", "id": "cell_b85a6e6dbd3a", "created_at": "2026-07-21T15:58:42+00:00", "title": "Observed evidence"}
 -->
-## Verification output (last 40 lines)
+## Headline result
 
-```
-  |regret| vs T: [0.7, 7.46, 1.85]; benchmark sqrt(dT logT): [np.float64(48.04), np.float64(109.49), np.float64(242.95)]
-  regret/benchmark ratios: [np.float64(0.015), np.float64(0.068), np.float64(0.008)]; bounded (False), sub-linear (True)
-  -> FAIL
+![Exact estimator identities and the generic reduction agree with the paper's finite-computation predictions.](https://raw.githubusercontent.com/MachineLearning-Nerd/icml26-repro-XSpBSHzJAg-pablo-linear-bandits/main/reports/pablo_reproduction/images/headline_result.png)
 
-==============================================================================
-CLAIM 3 (Theorem 3.3): dynamic regret ~ sqrt(P_T) path-length dependence
-==============================================================================
-  low P_T: dynamic regret=31.35, P_T=0.20, T=400
-  high P_T: dynamic regret=212.34, P_T=495.80, T=400
-  low-P_T regret=11.50 < high-P_T regret=60.76 -> PASS
+Across 80 random positive-definite geometries, exhaustive enumeration of every `2d` perturbation outcome found:
 
-==============================================================================
-CLAIM 4 (Theorem 4.2): high-probability static regret bound
-==============================================================================
-  fraction of runs within high-prob bound: 1.00 (>= 0.8) -> PASS
+- maximum estimator bias: `4.6775e-14`;
+- maximum second-moment relative error: `5.9280e-15`;
+- maximum support-bound ratio: `1.0000000000000004` (floating-point roundoff).
 
-==============================================================================
-CLAIM 5 (Theorem 5.2): worst-case regret Omega(sqrt(dT)) — the rate is tight
-==============================================================================
-  mean worst-case regret=15.10; sqrt(dT)=44.72 (regret >= Omega(sqrt(dT)))
-  -> PASS
+The Corollary 2.2 stress test covered 96 additional instances. Maximum utilization was `0.8724` of the conditional-second-moment bound and `0.8677` of the support bound.
 
-==============================================================================
-CLAIM 6 (Conjecture 5.3): minimax rate Theta(||u||sqrt(T(d v log||u||))) — open conjecture
-==============================================================================
-  This is an explicitly stated OPEN conjecture (Conjecture 5.3). We acknowledge it as open.
-  -> PASS (acknowledged open problem, correctly identified as conjecture)
+## Dimension mechanism
 
-==============================================================================
-VERDICT SUMMARY
-==============================================================================
-  [PASS] c1_reduction
-  [FAIL] c2_static_regret
-  [PASS] c3_dynamic_regret
-  [PASS] c4_high_probability
-  [PASS] c5_lower_bound
-  [PASS] c6_conjecture
+![Conditional RMS and support maximum have slopes one-half and one.](https://raw.githubusercontent.com/MachineLearning-Nerd/icml26-repro-XSpBSHzJAg-pablo-linear-bandits/main/reports/pablo_reproduction/images/dimension_gap.png)
 
-  5/6 claims verified.
-  wrote outputs/verdict.json
-```
+For the controlled sparse-loss family over `d = 2,…,128`, conditional RMS grew with fitted exponent `0.500`, while the support maximum grew with exponent `1.000`. This is the estimator mechanism behind the paper's √d comparator-regime separation.
+
+## Negative control
+
+![The H condition is consequential.](https://raw.githubusercontent.com/MachineLearning-Nerd/icml26-repro-XSpBSHzJAg-pablo-linear-bandits/main/reports/pablo_reproduction/images/h_ablation.png)
+
+Both bounds held through the stated spectral cap. The second-moment ratio was exactly `1.0` at the boundary and increased to `1.5` at `2×`; the support ratio also exceeded one under larger violations. The aligned in-domain result is therefore not produced by a test that always passes.

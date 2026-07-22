@@ -10,6 +10,7 @@ The runs used the local CPU only, NumPy 2.1.3, and a fixed `uv --no-cache` comma
 
 - [Illustrated technical report](reports/pablo_reproduction/report.md)
 - [Self-contained marimo tutorial](notebooks/pablo_reproduction.py)
+- [Hugging Face Trackio logbook](https://huggingface.co/spaces/DineshAI/XSpBSHzJAg)
 - Local notebook commands: `uvx marimo edit notebooks/pablo_reproduction.py` or `uvx marimo run notebooks/pablo_reproduction.py`
 
 ## Experiment log

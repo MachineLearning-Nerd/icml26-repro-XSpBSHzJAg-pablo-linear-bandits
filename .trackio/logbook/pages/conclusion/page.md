@@ -3,18 +3,27 @@
 
 ---
 <!-- trackio-cell
-{"type": "markdown", "id": "cell_972f903121f5", "created_at": "2026-07-21T15:58:48+00:00", "title": "Executive summary"}
+{"type": "markdown", "id": "cell_972f903121f5", "created_at": "2026-07-21T15:58:48+00:00", "title": "Executive assessment"}
 -->
-## Executive summary
+## Executive assessment
 
-6/6 claim checks PASS for **A Perturbation Approach to Unconstrained Linear Bandits** (`XSpBSHzJAg`). Clean-room numpy verification on CPU (<1 min, <100 MB). Each claim verified at full scale with an independent mechanism and negative controls; no toy/proxy results.
+PABLO's tested estimator reduction is strongly supported:
 
-## Scope & cost
+1. its finite identities match to floating-point precision;
+2. its matrix cap survives broad randomized stress tests;
+3. the generic OGD reduction has a large positive confidence margin;
+4. the predicted dimension exponents appear exactly in a controlled family; and
+5. a deliberate out-of-domain control breaks the guarantees.
 
-| | This reproduction | Full replication |
+The strongest limitation is one of scope, not a numerical divergence. The paper's dynamic, high-probability, and universal lower-bound results depend on specialized algorithms or proof quantifiers not implemented here. A full reproduction would need faithful PFMD, Algorithm 6, the optimistic composite-penalty learners, and a proof-oriented audit of Theorem 5.2.
+
+| | This reproduction | Full reproduction still needed |
 |---|---|---|
-| Scope | all claims, clean-room | same |
-| Hardware | CPU (numpy) | same |
-| Time | <1 min | same |
-| Cost | $0 | $0 |
-| Outcome | verified | — |
+| Hardware | Local CPU | Local CPU likely sufficient |
+| Successful run time | 85 s | Depends on specialized implementations |
+| Central estimator reduction | **Aligned** | — |
+| Static PFMD theorem | Mechanism aligned | Full learner implementation |
+| Dynamic/high-probability theorems | Prerequisites only | Full meta-algorithms |
+| Lower bound | Not attempted empirically | Proof audit |
+
+[Read the full visual report on GitHub](https://github.com/MachineLearning-Nerd/icml26-repro-XSpBSHzJAg-pablo-linear-bandits/blob/main/reports/pablo_reproduction/report.md).
