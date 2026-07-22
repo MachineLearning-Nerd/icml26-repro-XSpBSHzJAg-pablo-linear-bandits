@@ -143,6 +143,47 @@ def check_proposition_23() -> dict[str, object]:
     }
 
 
+def check_perturbation_scale_negative_control() -> dict[str, object]:
+    d = 8
+    w = np.ones(d) / np.sqrt(d)
+    loss = w.copy()
+    cap = 1.0 / (d * float(w @ w))
+    multipliers = np.array([0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0])
+    second_ratios = []
+    support_ratios = []
+    for multiplier in multipliers:
+        h = np.eye(d) * cap * multiplier
+        outcomes = pablo.enumerate_outcomes(w, loss, h)
+        squared_norms = np.array([outcome.estimate @ outcome.estimate for outcome in outcomes])
+        second_ratios.append(float(squared_norms.mean() / (2.0 * d * (loss @ loss))))
+        support_ratios.append(float(squared_norms.max() / (4.0 * d**2 * (loss @ loss))))
+
+    second_ratios_array = np.array(second_ratios)
+    support_ratios_array = np.array(support_ratios)
+    in_domain = multipliers <= 1.0
+    out_of_domain = multipliers > 1.0
+    within_domain_holds = bool(
+        np.all(second_ratios_array[in_domain] <= 1.0 + 1e-12)
+        and np.all(support_ratios_array[in_domain] <= 1.0 + 1e-12)
+    )
+    outside_domain_can_break = bool(
+        np.any(second_ratios_array[out_of_domain] > 1.0 + 1e-12)
+        and np.any(support_ratios_array[out_of_domain] > 1.0 + 1e-12)
+    )
+    return {
+        "paper_claim": "Corollary 2.2 requires H to stay below the Eq. (4) spectral cap.",
+        "observed": {
+            "H_cap_multipliers": multipliers.tolist(),
+            "second_moment_bound_ratios": second_ratios,
+            "support_bound_ratios": support_ratios,
+            "within_stated_domain_holds": within_domain_holds,
+            "outside_stated_domain_can_break": outside_domain_can_break,
+        },
+        "assessment": "aligned" if within_domain_holds and outside_domain_can_break else "inconclusive under this setup",
+        "scope": "A diagnostic ablation, not a claim that every H above the cap must violate the bounds.",
+    }
+
+
 def main() -> None:
     results = {
         "paper": "A Perturbation Approach to Unconstrained Linear Bandits",
@@ -153,6 +194,7 @@ def main() -> None:
             "proposition_2_1": check_proposition_21(),
             "corollary_2_2": check_corollary_22(),
             "proposition_2_3": check_proposition_23(),
+            "corollary_2_2_negative_control": check_perturbation_scale_negative_control(),
         },
     }
     print("PABLO EXACT-IDENTITY AND REDUCTION CHECK")
