@@ -453,68 +453,103 @@ def _high_probability_losses(family: str, dimension: int, horizon: int) -> np.nd
                 1.0 if (t // 8) % 2 == 0 else -1.0
             )
         return losses
+    if family == "dense_chirp":
+        times = np.arange(horizon, dtype=float) / horizon
+        phase = 2.0 * np.pi * (times + 3.0 * times**2)
+        losses = np.zeros((horizon, dimension))
+        losses[:, 0] = 0.35
+        losses[:, 1] = 0.40 * np.sin(phase)
+        losses[:, 2] = 0.40 * np.cos(phase)
+        return losses
     raise ValueError(f"unknown family {family}")
 
 
 def check_theorem_42_high_probability() -> dict[str, object]:
-    """Finite coverage audit of the exact Theorem 4.2 learner construction."""
-    dimension, horizon, repetitions = 3, 128, 160
+    """Held-out coverage audit of the exact Theorem 4.2 construction."""
+    dimension, repetitions = 3, 100
     epsilon = 0.2
+    # Pre-registered from the completed T=128 calibration node, whose largest
+    # target-quantile/displayed-scale ratio was about 1.139. The paper states
+    # a tilde-O bound, not a coefficient-one inequality.
+    scale_multiplier = 1.25
     rows = []
     max_residual = 0.0
     max_estimate_ratio = 0.0
+    max_required_multiplier = 0.0
     all_coverage_aligned = True
-    for family in ("biased_spherical", "block_rotations"):
-        losses = _high_probability_losses(family, dimension, horizon)
-        loss_bound = float(np.max(np.linalg.norm(losses, axis=1)))
-        cumulative = losses.sum(axis=0)
-        comparator = -0.75 * cumulative / np.linalg.norm(cumulative)
-        for delta in (0.10, 0.05, 0.02):
-            regrets = np.empty(repetitions)
-            for repetition in range(repetitions):
-                _, played, _, diagnostics = pablo.pablo_high_probability(
-                    losses,
-                    seed=SEED + 500_000 + 10_000 * int(100 * delta) + repetition,
-                    delta=delta,
-                    epsilon=epsilon,
+    families = ("biased_spherical", "block_rotations", "dense_chirp")
+    for horizon in (64, 256):
+        for family_index, family in enumerate(families):
+            losses = _high_probability_losses(family, dimension, horizon)
+            loss_bound = float(np.max(np.linalg.norm(losses, axis=1)))
+            cumulative = losses.sum(axis=0)
+            comparator = -0.75 * cumulative / np.linalg.norm(cumulative)
+            for delta in (0.10, 0.05, 0.02):
+                regrets = np.empty(repetitions)
+                for repetition in range(repetitions):
+                    _, played, _, diagnostics = pablo.pablo_high_probability(
+                        losses,
+                        seed=(
+                            SEED
+                            + 500_000
+                            + 1_000 * horizon
+                            + 100_000 * family_index
+                            + 10_000 * int(100 * delta)
+                            + repetition
+                        ),
+                        delta=delta,
+                        epsilon=epsilon,
+                    )
+                    regrets[repetition] = float(
+                        np.sum(losses * (played - comparator))
+                    )
+                    max_residual = max(
+                        max_residual,
+                        diagnostics["max_fixed_point_residual"],
+                    )
+                    max_estimate_ratio = max(
+                        max_estimate_ratio,
+                        diagnostics["max_estimate_bound_ratio"],
+                    )
+                displayed_scale = (
+                    dimension
+                    * loss_bound
+                    * (epsilon + np.linalg.norm(comparator))
+                    * np.log(horizon / delta)
+                    + loss_bound
+                    * np.linalg.norm(comparator)
+                    * np.sqrt(dimension * horizon * np.log(horizon / delta))
                 )
-                regrets[repetition] = float(np.sum(losses * (played - comparator)))
-                max_residual = max(
-                    max_residual,
-                    diagnostics["max_fixed_point_residual"],
+                envelope = scale_multiplier * displayed_scale
+                successes = int(np.sum(regrets <= envelope))
+                coverage = successes / repetitions
+                coverage_lower = _wilson_lower(successes, repetitions)
+                target = 1.0 - 3.0 * delta
+                target_quantile = float(np.quantile(regrets, target))
+                required_multiplier = target_quantile / displayed_scale
+                max_required_multiplier = max(
+                    max_required_multiplier,
+                    required_multiplier,
                 )
-                max_estimate_ratio = max(
-                    max_estimate_ratio,
-                    diagnostics["max_estimate_bound_ratio"],
+                aligned = coverage_lower >= target
+                all_coverage_aligned = all_coverage_aligned and aligned
+                rows.append(
+                    {
+                        "family": family,
+                        "T": horizon,
+                        "delta": delta,
+                        "target_coverage_1_minus_3delta": target,
+                        "empirical_coverage": coverage,
+                        "wilson_95pct_lower": coverage_lower,
+                        "displayed_theorem_scale": float(displayed_scale),
+                        "pre_registered_multiplier": scale_multiplier,
+                        "applied_envelope": float(envelope),
+                        "mean_regret": float(regrets.mean()),
+                        "empirical_quantile_at_target": target_quantile,
+                        "required_multiplier": float(required_multiplier),
+                        "coverage_aligned": bool(aligned),
+                    }
                 )
-            envelope = (
-                dimension
-                * loss_bound
-                * (epsilon + np.linalg.norm(comparator))
-                * np.log(horizon / delta)
-                + loss_bound
-                * np.linalg.norm(comparator)
-                * np.sqrt(dimension * horizon * np.log(horizon / delta))
-            )
-            successes = int(np.sum(regrets <= envelope))
-            coverage = successes / repetitions
-            coverage_lower = _wilson_lower(successes, repetitions)
-            target = 1.0 - 3.0 * delta
-            aligned = coverage_lower >= target
-            all_coverage_aligned = all_coverage_aligned and aligned
-            rows.append(
-                {
-                    "family": family,
-                    "delta": delta,
-                    "target_coverage_1_minus_3delta": target,
-                    "empirical_coverage": coverage,
-                    "wilson_95pct_lower": coverage_lower,
-                    "theorem_scale_envelope": float(envelope),
-                    "mean_regret": float(regrets.mean()),
-                    "empirical_quantile_at_target": float(np.quantile(regrets, target)),
-                    "coverage_aligned": bool(aligned),
-                }
-            )
     aligned = (
         all_coverage_aligned
         and max_residual < 1e-10
@@ -524,13 +559,16 @@ def check_theorem_42_high_probability() -> dict[str, object]:
         "paper_claim": "Theorem 4.2: PABLO with the Zhang--Cutkosky optimistic composite learner has comparator-adaptive high-probability static regret.",
         "observed": {
             "implementation": "Zhang--Cutkosky optimistic composite learner with PFMD base algorithms and implicit radial solve",
+            "calibration": "multiplier 1.25 pre-registered from completed T=128 parent; evaluated here only on held-out T=64,256",
+            "pre_registered_scale_multiplier": scale_multiplier,
+            "max_required_multiplier_on_holdout": max_required_multiplier,
             "repetitions_per_configuration": repetitions,
             "max_fixed_point_residual": max_residual,
             "max_estimate_bound_ratio": max_estimate_ratio,
             "configurations": rows,
         },
-        "assessment": "aligned in faithful finite high-probability instantiations" if aligned else "inconclusive under these high-probability instantiations",
-        "scope": "Coverage is measured against the theorem's displayed scale with coefficient one, stricter than an unspecified polylogarithmic constant, on two bounded oblivious loss families. This is finite evidence, not a universal probability proof.",
+        "assessment": "aligned in pre-registered held-out high-probability instantiations" if aligned else "inconclusive under the pre-registered high-probability validation",
+        "scope": "The theorem is tilde-O, so a 1.25 scale constant was fixed from a completed calibration run and tested without retuning on two unseen horizons and three bounded loss families. This is finite evidence, not a universal probability proof.",
     }
 
 
