@@ -398,7 +398,7 @@ def check_theorem_52_lower_bound() -> dict[str, object]:
                     "sqrt_dT_over_64": theorem_sqrt_bound,
                     "small_action_T_over_6d": small_action_bound,
                     "zero_policy_expected_regret": zero_policy_regret,
-                    "construction_checks_pass": row_valid,
+                    "construction_checks_pass": bool(row_valid),
                 }
             )
     slope, _ = np.polyfit(np.log(products), np.log(zero_policy_regrets), 1)
