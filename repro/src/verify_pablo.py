@@ -143,6 +143,52 @@ def check_proposition_23() -> dict[str, object]:
     }
 
 
+def check_dimension_gap_mechanism() -> dict[str, object]:
+    dimensions = np.array([2, 4, 8, 16, 32, 64, 128], dtype=float)
+    rms_values = []
+    support_values = []
+    epsilon = 0.1
+    for dimension_value in dimensions:
+        d = int(dimension_value)
+        w = np.zeros(d)
+        loss = np.zeros(d)
+        loss[0] = 1.0
+        h = np.eye(d) / (d * epsilon**2)
+        outcomes = pablo.enumerate_outcomes(w, loss, h)
+        norms = np.array([np.linalg.norm(outcome.estimate) for outcome in outcomes])
+        rms_values.append(float(np.sqrt(np.mean(norms**2))))
+        support_values.append(float(norms.max()))
+
+    rms_slope, _ = np.polyfit(np.log(dimensions), np.log(rms_values), 1)
+    support_slope, _ = np.polyfit(np.log(dimensions), np.log(support_values), 1)
+    max_rms_normalized_error = float(
+        np.max(np.abs(np.array(rms_values) / np.sqrt(dimensions) - 1.0))
+    )
+    max_support_normalized_error = float(
+        np.max(np.abs(np.array(support_values) / dimensions - 1.0))
+    )
+    aligned = (
+        abs(float(rms_slope) - 0.5) < 1e-10
+        and abs(float(support_slope) - 1.0) < 1e-10
+        and max_rms_normalized_error < 1e-12
+        and max_support_normalized_error < 1e-12
+    )
+    return {
+        "paper_claim": "Theorem 3.1 mechanism: second-moment control contributes sqrt(d), while trajectory-coupled control uses a worst-case d scale.",
+        "observed": {
+            "dimensions": [int(value) for value in dimensions],
+            "conditional_rms": rms_values,
+            "support_maximum": support_values,
+            "conditional_rms_loglog_slope": float(rms_slope),
+            "support_maximum_loglog_slope": float(support_slope),
+            "max_rms_over_sqrt_d_error": max_rms_normalized_error,
+            "max_support_over_d_error": max_support_normalized_error,
+        },
+        "assessment": "aligned" if aligned else "not aligned in this controlled family",
+        "scope": "Tests the estimator-moment mechanism behind the sqrt(d) separation, not the full PFMD theorem with hidden polylogarithmic constants.",
+    }
+
+
 def main() -> None:
     results = {
         "paper": "A Perturbation Approach to Unconstrained Linear Bandits",
@@ -153,6 +199,7 @@ def main() -> None:
             "proposition_2_1": check_proposition_21(),
             "corollary_2_2": check_corollary_22(),
             "proposition_2_3": check_proposition_23(),
+            "theorem_3_1_dimension_mechanism": check_dimension_gap_mechanism(),
         },
     }
     print("PABLO EXACT-IDENTITY AND REDUCTION CHECK")
