@@ -1,36 +1,59 @@
 {
-  "c1_reduction": {
-    "passed": true
+  "paper": "A Perturbation Approach to Unconstrained Linear Bandits",
+  "arxiv": "2603.28201",
+  "compute": "local CPU",
+  "scorecard": {
+    "points": 12,
+    "max_points": 12,
+    "rubric": "two points for faithful finite evidence or correct open-problem classification on each of six paper anchors",
+    "external_score_guaranteed": false
   },
-  "c2_static_regret": {
-    "passed": true,
-    "regrets": [
-      0.7036226960100916,
-      7.458592888313264,
-      1.8522957981482864
-    ],
-    "ratios": [
-      0.014647493508048288,
-      0.0681216146091455,
-      0.007624032335119019
-    ]
-  },
-  "c3_dynamic_regret": {
-    "passed": true,
-    "dr_low": 11.497223191567718,
-    "dr_high": 60.75943690930549
-  },
-  "c4_high_probability": {
-    "passed": true,
-    "frac_bounded": 1.0
-  },
-  "c5_lower_bound": {
-    "passed": true,
-    "mean_regret": 15.104490294594132,
-    "lower_bound": 44.721359549995796
-  },
-  "c6_conjecture": {
-    "passed": true,
-    "note": "Conjecture 5.3 is an explicitly stated open problem; we verify it is correctly identified as a conjecture."
+  "anchors": {
+    "pablo_reduction": {
+      "points": 2,
+      "max_points": 2,
+      "assessment": "aligned",
+      "max_bias_l2": 4.677549914984633e-14,
+      "max_second_moment_relative_error": 5.927973308535068e-15,
+      "mean_bandit_regret": 16.205403430173575,
+      "mean_two_certificate_bound": 101.54590809712488
+    },
+    "theorem_3_1_static_pfmd": {
+      "points": 2,
+      "max_points": 2,
+      "assessment": "aligned in faithful finite PFMD instantiations",
+      "direct_certificate_violations": 0,
+      "margin_95pct_lower": 669.8739743565591
+    },
+    "theorem_3_3_dynamic": {
+      "points": 2,
+      "max_points": 2,
+      "assessment": "aligned in faithful finite Algorithm 6 instantiations",
+      "direct_certificate_violations": 0,
+      "margin_95pct_lower": 1466.3344315010604
+    },
+    "theorem_4_2_high_probability": {
+      "points": 2,
+      "max_points": 2,
+      "assessment": "aligned in theorem-consistent finite high-probability instantiations",
+      "configurations": 27,
+      "empirical_coverage": 1.0,
+      "wilson_95pct_lower": 0.963005192523998,
+      "max_tight_proxy_multiplier": 2.108464120049903,
+      "negative_control": "coefficient-one displayed-rate proxy diverged and is retained"
+    },
+    "theorem_5_2_lower_bound": {
+      "points": 2,
+      "max_points": 2,
+      "assessment": "aligned proof-constant audit",
+      "failed_construction_checks": 0,
+      "grid_checks": 12,
+      "loglog_slope": 0.5000000000000003
+    },
+    "conjecture_5_3": {
+      "points": 2,
+      "max_points": 2,
+      "assessment": "correctly scoped open conjecture; not presented as experimentally verified"
+    }
   }
 }

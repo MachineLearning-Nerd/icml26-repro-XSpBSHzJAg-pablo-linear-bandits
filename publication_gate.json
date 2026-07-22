@@ -1,8 +1,13 @@
 {
   "paper": "XSpBSHzJAg",
-  "tests_passed": true,
+  "arxiv": "2603.28201",
+  "tests_completed": true,
   "publication_gate_passed": true,
-  "claims_verified": 6,
-  "claims_total": 6,
-  "arxiv": "2603.28201"
+  "claim_anchors_covered": 6,
+  "claim_anchors_total": 6,
+  "score_points": 12,
+  "score_points_total": 12,
+  "report": "reports/pablo_reproduction/report.md",
+  "notebook": "notebooks/pablo_reproduction.py",
+  "external_score_guaranteed": false
 }

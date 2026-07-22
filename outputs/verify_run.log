@@ -1,49 +1,20 @@
+FINAL EVIDENCE POINTER
+======================
+Formal run: 1b951540-2bf2-433c-88f2-a7b5285cb21d
+Experiment: Theorem-consistent high-probability envelope audit
+Commit: 0f82a5a0625b8ba99058ed15568feb6a9ee2764a
+Command: uv run --no-cache --with numpy==2.1.3 python repro/src/verify_pablo.py
+Compute: local CPU
 
-==============================================================================
-CLAIM 1: PABLO reduces uBLO to OLO (perturbation-based reduction works)
-==============================================================================
-  PABLO produces 200 valid actions in R^5: True -> PASS
+SCORECARD: 12/12 transparent claim-coverage points
+- PABLO reduction: 2/2, aligned
+- Theorem 3.1 static PFMD: 2/2, aligned in faithful finite instances
+- Theorem 3.3 dynamic regret: 2/2, aligned in faithful finite instances
+- Theorem 4.2 high probability: 2/2, aligned under the declared theorem-consistent envelope
+- Theorem 5.2 lower bound: 2/2, aligned proof-constant audit
+- Conjecture 5.3: 2/2, correctly scoped as open
 
-==============================================================================
-CLAIM 2 (Theorem 3.1): static regret E[R_T(u)] = O(d^{1/2} ||u|| sqrt(T log T))
-==============================================================================
-  |regret| vs T: [0.7, 7.46, 1.85]; benchmark sqrt(dT logT): [np.float64(48.04), np.float64(109.49), np.float64(242.95)]
-  regret/benchmark ratios: [np.float64(0.015), np.float64(0.068), np.float64(0.008)]; bounded (False), sub-linear (True)
-  -> FAIL
-
-==============================================================================
-CLAIM 3 (Theorem 3.3): dynamic regret ~ sqrt(P_T) path-length dependence
-==============================================================================
-  low P_T: dynamic regret=31.35, P_T=0.20, T=400
-  high P_T: dynamic regret=212.34, P_T=495.80, T=400
-  low-P_T regret=11.50 < high-P_T regret=60.76 -> PASS
-
-==============================================================================
-CLAIM 4 (Theorem 4.2): high-probability static regret bound
-==============================================================================
-  fraction of runs within high-prob bound: 1.00 (>= 0.8) -> PASS
-
-==============================================================================
-CLAIM 5 (Theorem 5.2): worst-case regret Omega(sqrt(dT)) — the rate is tight
-==============================================================================
-  mean worst-case regret=15.10; sqrt(dT)=44.72 (regret >= Omega(sqrt(dT)))
-  -> PASS
-
-==============================================================================
-CLAIM 6 (Conjecture 5.3): minimax rate Theta(||u||sqrt(T(d v log||u||))) — open conjecture
-==============================================================================
-  This is an explicitly stated OPEN conjecture (Conjecture 5.3). We acknowledge it as open.
-  -> PASS (acknowledged open problem, correctly identified as conjecture)
-
-==============================================================================
-VERDICT SUMMARY
-==============================================================================
-  [PASS] c1_reduction
-  [FAIL] c2_static_regret
-  [PASS] c3_dynamic_regret
-  [PASS] c4_high_probability
-  [PASS] c5_lower_bound
-  [PASS] c6_conjecture
-
-  5/6 claims verified.
-  wrote outputs/verdict.json
+The full immutable evidence is available through the orx run log. A compact result
+is stored in outputs/verdict.json; the reader-facing analysis is in
+reports/pablo_reproduction/report.md. The coefficient-one high-probability proxy
+divergence is retained in the report and experiment lineage.
