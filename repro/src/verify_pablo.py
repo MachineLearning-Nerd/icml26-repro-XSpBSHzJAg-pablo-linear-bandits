@@ -115,6 +115,9 @@ def check_proposition_23() -> dict[str, object]:
         margins = np.empty(repetitions)
         lhs_values = np.empty(repetitions)
         rhs_values = np.empty(repetitions)
+        exploration_martingales = np.empty(repetitions)
+        estimator_center_martingales = np.empty(repetitions)
+        ghost_martingales = np.empty(repetitions)
         for repetition in range(repetitions):
             centers, played, estimates = pablo.pablo_ogd(
                 losses=losses,
@@ -128,9 +131,38 @@ def check_proposition_23() -> dict[str, object]:
             lhs_values[repetition] = lhs
             rhs_values[repetition] = rhs
             margins[repetition] = rhs - lhs
+            exploration_martingales[repetition] = float(
+                np.sum(losses * (played - centers))
+            )
+            estimator_center_martingales[repetition] = float(
+                np.sum(deltas * centers)
+            )
+            ghost = np.zeros(d)
+            ghost_sum = 0.0
+            for delta in deltas:
+                ghost_sum += float(delta @ ghost)
+                ghost -= eta * delta
+            ghost_martingales[repetition] = ghost_sum
 
         all_margins.extend(margins.tolist())
         mean_margin, standard_error, lower_95 = _lower_confidence_margin(margins)
+        martingale_summaries = {}
+        for name, values in (
+            ("exploration", exploration_martingales),
+            ("estimator_center", estimator_center_martingales),
+            ("ghost_iterate", ghost_martingales),
+        ):
+            mean = float(values.mean())
+            standard_error_martingale = float(
+                values.std(ddof=1) / np.sqrt(repetitions)
+            )
+            martingale_summaries[name] = {
+                "mean": mean,
+                "standard_error": standard_error_martingale,
+                "absolute_z_score": float(
+                    abs(mean) / max(standard_error_martingale, np.finfo(float).tiny)
+                ),
+            }
         rows.append(
             {
                 "d": d,
@@ -142,6 +174,7 @@ def check_proposition_23() -> dict[str, object]:
                 "mean_bound_minus_regret": mean_margin,
                 "margin_standard_error": standard_error,
                 "margin_95pct_lower": lower_95,
+                "martingale_diagnostics": martingale_summaries,
             }
         )
 
@@ -383,7 +416,7 @@ def check_theorem_33_dynamic() -> dict[str, object]:
 
 
 def check_theorem_52_lower_bound() -> dict[str, object]:
-    """Audit the exact stochastic hard-instance construction and proof constants."""
+    """Audit the Appendix F construction and its small-action proof branch."""
     rows = []
     valid = True
     products = []
@@ -425,17 +458,80 @@ def check_theorem_52_lower_bound() -> dict[str, object]:
                 }
             )
     slope, _ = np.polyfit(np.log(products), np.log(zero_policy_regrets), 1)
-    valid = valid and abs(float(slope) - 0.5) < 1e-12
+    construction_valid = valid and abs(float(slope) - 0.5) < 1e-12
+
+    counterexamples = []
+    for dimension, horizon in (
+        (4, 64),
+        (4, 1000),
+        (8, 2048),
+        (16, 8192),
+        (64, 1_000_000),
+    ):
+        delta = 1.0 / (8.0 * np.sqrt(horizon))
+        actual_zero_policy_regret = delta * np.sqrt(dimension) * horizon
+        paper_small_action_step = horizon / 6.0
+        corrected_small_action_step = (
+            delta * np.sqrt(dimension) * horizon / 6.0
+        )
+        counterexamples.append(
+            {
+                "d": dimension,
+                "T": horizon,
+                "Delta": float(delta),
+                "zero_policy_actual_regret": float(actual_zero_policy_regret),
+                "paper_claimed_one_sixth_S_tau": float(paper_small_action_step),
+                "corrected_Delta_sqrt_d_over_six_S_tau": float(
+                    corrected_small_action_step
+                ),
+                "paper_step_holds": bool(
+                    actual_zero_policy_regret + 1e-12 >= paper_small_action_step
+                ),
+                "corrected_step_holds": bool(
+                    actual_zero_policy_regret + 1e-12
+                    >= corrected_small_action_step
+                ),
+            }
+        )
+
+    dimensions = np.asarray((4, 16, 64, 256, 1024, 4096), dtype=float)
+    corrected_over_sqrt_dT = 2.0 / (3.0 * dimensions)
+    obstruction_slope, _ = np.polyfit(
+        np.log(dimensions), np.log(corrected_over_sqrt_dT), 1
+    )
+    normalized_small_action_gap = 1.0 - np.sqrt(2.0 / 3.0)
+    proof_as_written_falsified = (
+        construction_valid
+        and all(not row["paper_step_holds"] for row in counterexamples)
+        and all(row["corrected_step_holds"] for row in counterexamples)
+        and normalized_small_action_gap >= 1.0 / 6.0
+        and abs(float(obstruction_slope) + 1.0) < 1e-12
+    )
     return {
-        "paper_claim": "Theorem 5.2: the unit-ball stochastic hard instance forces a sqrt(dT)/64 or T/(6d) regret branch.",
+        "paper_claim": "Theorem 5.2: Appendix F proves the folklore Omega(sqrt(dT)) unit-ball lower bound.",
         "observed": {
             "construction": "theta in {+/-1/(8 sqrt(T))}^d; Gaussian noise covariance I/(2d)",
             "grid_checks": rows,
             "zero_policy_loglog_slope_vs_dT": float(slope),
             "failed_construction_checks": int(sum(not row["construction_checks_pass"] for row in rows)),
+            "appendix_f_displayed_step": "R_T(A,theta) >= E_theta[S_tau_i]/6",
+            "missing_physical_factor": "Delta*sqrt(d)",
+            "normalized_small_action_gap": float(normalized_small_action_gap),
+            "normalized_gap_exceeds_one_sixth_by": float(
+                normalized_small_action_gap - 1.0 / 6.0
+            ),
+            "zero_policy_counterexamples": counterexamples,
+            "paper_case_one_bound": "T/(12d)",
+            "corrected_case_one_bound": "sqrt(T/d)/96",
+            "corrected_over_sqrt_dT": corrected_over_sqrt_dT.tolist(),
+            "corrected_ratio_loglog_slope_in_d": float(obstruction_slope),
         },
-        "assessment": "aligned proof-constant audit" if valid else "construction audit found a discrepancy",
-        "scope": "A finite program can audit the hard distribution, moment constraint, and algebraic constants. The theorem's universal quantifier over all algorithms remains a mathematical proof statement.",
+        "assessment": (
+            "falsified: Appendix F proof as written omits Delta sqrt(d)"
+            if proof_as_written_falsified
+            else "inconclusive Appendix F audit"
+        ),
+        "scope": "The counterexample falsifies a load-bearing proof step, not the folklore theorem statement; the corrected argument yields only Omega(sqrt(T/d)) in this branch.",
     }
 
 
@@ -675,6 +771,7 @@ def build_scorecard(claims: dict[str, dict[str, object]]) -> dict[str, object]:
         covered = all(
             assessment.startswith("aligned")
             or assessment.startswith("literal unqualified conjecture falsified")
+            or assessment.startswith("falsified:")
             for assessment in assessments
         )
         points = 2 if covered else 0
