@@ -97,49 +97,63 @@ def check_corollary_22() -> dict[str, object]:
 
 def check_proposition_23() -> dict[str, object]:
     rng = np.random.default_rng(SEED + 2)
-    d, horizon, repetitions = 5, 250, 1200
-    eta = 0.01
+    rows = []
+    all_margins = []
+    for config_index, (d, horizon, repetitions) in enumerate(
+        ((5, 250, 1200), (8, 512, 512), (16, 2048, 192), (32, 4096, 96))
+    ):
+        eta = 0.15 / np.sqrt(horizon)
 
-    # Fixed before the learner's perturbations: an oblivious, bounded sequence.
-    losses = rng.normal(size=(horizon, d))
-    losses /= np.linalg.norm(losses, axis=1, keepdims=True)
-    losses = 0.35 * losses + 0.05 * np.eye(1, d, 0).repeat(horizon, axis=0)
-    losses /= np.maximum(1.0, np.linalg.norm(losses, axis=1, keepdims=True))
-    cumulative_loss = losses.sum(axis=0)
-    comparator = -cumulative_loss / np.linalg.norm(cumulative_loss)
+        # Fixed before the learner's perturbations: an oblivious, bounded sequence.
+        losses = rng.normal(size=(horizon, d))
+        losses /= np.linalg.norm(losses, axis=1, keepdims=True)
+        losses = 0.35 * losses + 0.05 * np.eye(1, d, 0).repeat(horizon, axis=0)
+        losses /= np.maximum(1.0, np.linalg.norm(losses, axis=1, keepdims=True))
+        cumulative_loss = losses.sum(axis=0)
+        comparator = -cumulative_loss / np.linalg.norm(cumulative_loss)
 
-    margins = np.empty(repetitions)
-    lhs_values = np.empty(repetitions)
-    rhs_values = np.empty(repetitions)
-    for repetition in range(repetitions):
-        centers, played, estimates = pablo.pablo_ogd(
-            losses=losses,
-            eta=eta,
-            seed=SEED + 10_000 + repetition,
+        margins = np.empty(repetitions)
+        lhs_values = np.empty(repetitions)
+        rhs_values = np.empty(repetitions)
+        for repetition in range(repetitions):
+            centers, played, estimates = pablo.pablo_ogd(
+                losses=losses,
+                eta=eta,
+                seed=SEED + 10_000_000 * config_index + repetition,
+            )
+            deltas = losses - estimates
+            lhs = float(np.sum(losses * (played - comparator)))
+            rhs = pablo.ogd_static_certificate(comparator, estimates, eta)
+            rhs += pablo.ogd_static_certificate(comparator, deltas, eta)
+            lhs_values[repetition] = lhs
+            rhs_values[repetition] = rhs
+            margins[repetition] = rhs - lhs
+
+        all_margins.extend(margins.tolist())
+        mean_margin, standard_error, lower_95 = _lower_confidence_margin(margins)
+        rows.append(
+            {
+                "d": d,
+                "T": horizon,
+                "eta": float(eta),
+                "perturbation_repetitions": repetitions,
+                "mean_bandit_regret": float(lhs_values.mean()),
+                "mean_two_certificate_bound": float(rhs_values.mean()),
+                "mean_bound_minus_regret": mean_margin,
+                "margin_standard_error": standard_error,
+                "margin_95pct_lower": lower_95,
+            }
         )
-        deltas = losses - estimates
-        lhs = float(np.sum(losses * (played - comparator)))
-        rhs = pablo.ogd_static_certificate(comparator, estimates, eta)
-        rhs += pablo.ogd_static_certificate(comparator, deltas, eta)
-        lhs_values[repetition] = lhs
-        rhs_values[repetition] = rhs
-        margins[repetition] = rhs - lhs
 
-    mean_margin = float(margins.mean())
-    standard_error = float(margins.std(ddof=1) / np.sqrt(repetitions))
-    lower_95 = mean_margin - 1.96 * standard_error
-    aligned = lower_95 > 0.0
+    _, _, overall_lower_95 = _lower_confidence_margin(np.asarray(all_margins))
+    aligned = overall_lower_95 > 0.0 and all(
+        row["margin_95pct_lower"] > 0.0 for row in rows
+    )
     return {
         "paper_claim": "Proposition 2.3: expected bandit regret is controlled by two OLO certificates.",
         "observed": {
-            "d": d,
-            "T": horizon,
-            "perturbation_repetitions": repetitions,
-            "mean_bandit_regret": float(lhs_values.mean()),
-            "mean_two_certificate_bound": float(rhs_values.mean()),
-            "mean_bound_minus_regret": mean_margin,
-            "margin_standard_error": standard_error,
-            "margin_95pct_lower": lower_95,
+            "overall_margin_95pct_lower": overall_lower_95,
+            "configurations": rows,
         },
         "assessment": "aligned" if aligned else "inconclusive under this setup",
         "scope": "Finite Monte Carlo instantiation with Euclidean OGD; this checks the reduction, not the PFMD rates in Theorem 3.1.",
@@ -306,12 +320,12 @@ def _switching_problem(
 
 def check_theorem_33_dynamic() -> dict[str, object]:
     """Run PABLO with the paper's Algorithms 5--6 and audit Theorem E.2."""
-    dimension, horizon, repetitions = 8, 2048, 48
+    dimension, horizon, repetitions = 16, 8192, 24
     epsilon = 0.2
     rows = []
     direct_certificate_violations = 0
     all_margins = []
-    for switches in (0, 4, 16, 64):
+    for switches in (0, 8, 32, 128):
         losses, comparators = _switching_problem(dimension, horizon, switches)
         regrets = np.empty(repetitions)
         certificates = np.empty(repetitions)
@@ -531,7 +545,7 @@ def check_theorem_42_high_probability() -> dict[str, object]:
     factor standing in for the suppressed polylogarithm.  Only the latter is
     used to assess the theorem as stated.
     """
-    dimension, repetitions = 8, 64
+    dimension, repetitions = 16, 64
     epsilon = 0.2
     rows = []
     max_residual = 0.0
@@ -539,8 +553,7 @@ def check_theorem_42_high_probability() -> dict[str, object]:
     max_required_displayed_rate_multiplier = 0.0
     all_theorem_envelope_coverage_aligned = True
     families = ("biased_spherical", "block_rotations", "dense_chirp")
-    # These horizons were not used by either preceding high-probability node.
-    for horizon in (512, 1024, 2048):
+    for horizon in (1024, 2048, 4096):
         for family_index, family in enumerate(families):
             losses = _high_probability_losses(family, dimension, horizon)
             loss_bound = float(np.max(np.linalg.norm(losses, axis=1)))
@@ -634,7 +647,7 @@ def check_theorem_42_high_probability() -> dict[str, object]:
             "implementation": "Zhang--Cutkosky optimistic composite learner with PFMD base algorithms and implicit radial solve",
             "envelope_definition": "displayed Theorem 4.2 rate times one explicit log(T/delta) factor for the polylogarithm suppressed by tilde-O",
             "negative_control": "the coefficient-one displayed-rate envelope is reported separately and is not treated as a paper claim",
-            "horizons_unseen_in_preceding_nodes": [96, 192, 384],
+            "executed_horizons": [1024, 2048, 4096],
             "max_required_displayed_rate_multiplier": max_required_displayed_rate_multiplier,
             "repetitions_per_configuration": repetitions,
             "max_fixed_point_residual": max_residual,
