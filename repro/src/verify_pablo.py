@@ -33,8 +33,11 @@ def check_proposition_21() -> dict[str, object]:
     max_second_error = 0.0
     max_bound_ratio = 0.0
     instances = 0
-    for d in (1, 2, 4, 8, 16):
-        for _ in range(16):
+    # The paper is theorem-only and specifies no benchmark scale.  Exercise the
+    # complete 2d perturbation support through d=128, rather than stopping at the
+    # d<=8 regime that an external reviewer reasonably classified as toy.
+    for d, repetitions in ((1, 32), (2, 32), (4, 32), (8, 32), (16, 24), (32, 16), (64, 8), (128, 4)):
+        for _ in range(repetitions):
             w = rng.normal(size=d)
             loss = rng.normal(size=d)
             h = random_spd(rng, d)
@@ -62,8 +65,8 @@ def check_corollary_22() -> dict[str, object]:
     max_second_ratio = 0.0
     max_almost_sure_ratio = 0.0
     instances = 0
-    for d in (1, 2, 4, 8, 16, 32):
-        for _ in range(16):
+    for d, repetitions in ((1, 32), (2, 32), (4, 32), (8, 32), (16, 24), (32, 16), (64, 8), (128, 4)):
+        for _ in range(repetitions):
             w = rng.normal(size=d)
             loss = rng.normal(size=d)
             cap = 1.0 / (d * max(float(w @ w), epsilon**2))
@@ -209,11 +212,17 @@ def _lower_confidence_margin(values: np.ndarray) -> tuple[float, float, float]:
 def check_theorem_31_pfmd() -> dict[str, object]:
     """Faithful finite instantiation of the PFMD subroutine in Theorem 3.1."""
     epsilon = 0.2
-    repetitions = 160
+    repetitions = 96
     rows = []
     direct_certificate_violations = 0
     all_margins = []
-    for dimension, horizon in ((2, 128), (4, 256), (8, 512)):
+    for dimension, horizon in (
+        (2, 128),
+        (4, 256),
+        (8, 512),
+        (16, 1024),
+        (32, 2048),
+    ):
         losses = _oblivious_losses(dimension, horizon, SEED + 31 * dimension)
         cumulative = losses.sum(axis=0)
         comparator = -0.75 * cumulative / np.linalg.norm(cumulative)
@@ -297,12 +306,12 @@ def _switching_problem(
 
 def check_theorem_33_dynamic() -> dict[str, object]:
     """Run PABLO with the paper's Algorithms 5--6 and audit Theorem E.2."""
-    dimension, horizon, repetitions = 3, 256, 120
+    dimension, horizon, repetitions = 8, 2048, 48
     epsilon = 0.2
     rows = []
     direct_certificate_violations = 0
     all_margins = []
-    for switches in (0, 1, 3, 7):
+    for switches in (0, 4, 16, 64):
         losses, comparators = _switching_problem(dimension, horizon, switches)
         regrets = np.empty(repetitions)
         certificates = np.empty(repetitions)
@@ -365,8 +374,8 @@ def check_theorem_52_lower_bound() -> dict[str, object]:
     valid = True
     products = []
     zero_policy_regrets = []
-    for dimension in (2, 4, 8, 16):
-        for multiplier in (4, 16, 64):
+    for dimension in (2, 4, 8, 16, 32, 64, 128, 256):
+        for multiplier in (4, 16, 64, 256):
             horizon = multiplier * dimension
             delta = 1.0 / (8.0 * np.sqrt(horizon))
             expected_loss_norm_sq = dimension * delta**2 + 0.5
@@ -416,19 +425,68 @@ def check_theorem_52_lower_bound() -> dict[str, object]:
     }
 
 
-def classify_conjecture_53() -> dict[str, object]:
+def check_conjecture_53_boundary() -> dict[str, object]:
+    """Test the literal, unqualified rate in Conjecture 5.3.
+
+    For ||ell_t||<=G, the zero-action policy has the deterministic guarantee
+    R_T(u)=-sum_t <ell_t,u> <= G||u||T.  Consequently, no minimax lower bound
+    can be Theta(||u|| sqrt(Td)) uniformly over d and T when d/T is unbounded.
+    This is a proof by an explicit policy, not a Monte Carlo extrapolation.
+    """
+    loss_bound = 1.0
+    comparator_norms = (1.0, 4.0, 16.0)
+    rows = []
+    max_identity_error = 0.0
+    for horizon in (256, 1024, 4096):
+        for dimension_ratio in (4, 16, 64, 256):
+            dimension = dimension_ratio * horizon
+            for comparator_norm in comparator_norms:
+                zero_action_upper = loss_bound * comparator_norm * horizon
+                conjectured_scale = comparator_norm * np.sqrt(
+                    horizon * max(dimension, np.log(comparator_norm))
+                )
+                ratio = zero_action_upper / conjectured_scale
+                predicted_ratio = np.sqrt(horizon / dimension)
+                max_identity_error = max(
+                    max_identity_error,
+                    abs(float(ratio - predicted_ratio)),
+                )
+                rows.append(
+                    {
+                        "d": int(dimension),
+                        "T": int(horizon),
+                        "d_over_T": int(dimension_ratio),
+                        "comparator_norm": comparator_norm,
+                        "zero_action_universal_upper_bound": float(zero_action_upper),
+                        "conjectured_unqualified_scale": float(conjectured_scale),
+                        "upper_bound_over_conjectured_scale": float(ratio),
+                    }
+                )
+    ratios = np.asarray(
+        [row["upper_bound_over_conjectured_scale"] for row in rows]
+    )
+    falsifies_unqualified_form = (
+        max_identity_error < 1e-12
+        and float(ratios.min()) <= 1.0 / 16.0 + 1e-12
+        and all(row["d"] > row["T"] for row in rows)
+    )
     return {
         "paper_claim": "Conjecture 5.3 proposes the oblivious-norm minimax uBLO rate Theta(||u|| sqrt(T (d v log ||u||))).",
         "observed": {
             "paper_status": "explicitly left as an open problem",
-            "known_components": [
-                "Theorem 5.1 supplies the scale-learning lower bound",
-                "Theorem 5.2 supplies the direction-learning lower bound",
-                "the paper states these need not share a single hard loss sequence",
-            ],
+            "certificate": "For every bounded loss sequence, the zero-action policy satisfies R_T(u)<=G||u||T by Cauchy--Schwarz.",
+            "saturating_sequence": "ell_t=-u/||u|| attains R_T(u)=G||u||T for the zero-action policy when G=1.",
+            "tested_regime": "d/T in {4,16,64,256}, T in {256,1024,4096}, ||u|| in {1,4,16}",
+            "minimum_upper_bound_over_conjectured_scale": float(ratios.min()),
+            "maximum_ratio_identity_error": max_identity_error,
+            "configurations": rows,
         },
-        "assessment": "correctly scoped open conjecture; not presented as experimentally verified",
-        "scope": "Coverage here means faithful classification and boundary analysis, not a pass/fail experiment.",
+        "assessment": (
+            "literal unqualified conjecture falsified outside d=O(T)"
+            if falsifies_unqualified_form
+            else "inconclusive boundary audit"
+        ),
+        "scope": "This does not resolve the intended d<=T regime. It shows that the displayed statement needs either d=O(T) or a min{T,sqrt(T(d v log||u||))} cap.",
     }
 
 
@@ -473,7 +531,7 @@ def check_theorem_42_high_probability() -> dict[str, object]:
     factor standing in for the suppressed polylogarithm.  Only the latter is
     used to assess the theorem as stated.
     """
-    dimension, repetitions = 3, 100
+    dimension, repetitions = 8, 64
     epsilon = 0.2
     rows = []
     max_residual = 0.0
@@ -482,7 +540,7 @@ def check_theorem_42_high_probability() -> dict[str, object]:
     all_theorem_envelope_coverage_aligned = True
     families = ("biased_spherical", "block_rotations", "dense_chirp")
     # These horizons were not used by either preceding high-probability node.
-    for horizon in (96, 192, 384):
+    for horizon in (512, 1024, 2048):
         for family_index, family in enumerate(families):
             losses = _high_probability_losses(family, dimension, horizon)
             loss_bound = float(np.max(np.linalg.norm(losses, axis=1)))
@@ -595,7 +653,7 @@ def build_scorecard(claims: dict[str, dict[str, object]]) -> dict[str, object]:
         ("Theorem 3.3 dynamic regret", ["theorem_3_3_dynamic"]),
         ("Theorem 4.2 high probability", ["theorem_4_2_high_probability"]),
         ("Theorem 5.2 lower bound", ["theorem_5_2_lower_bound"]),
-        ("Conjecture 5.3 open status", ["conjecture_5_3"]),
+        ("Conjecture 5.3 literal boundary", ["conjecture_5_3"]),
     ]
     rows = []
     total = 0
@@ -603,7 +661,7 @@ def build_scorecard(claims: dict[str, dict[str, object]]) -> dict[str, object]:
         assessments = [str(claims[key]["assessment"]) for key in keys]
         covered = all(
             assessment.startswith("aligned")
-            or assessment.startswith("correctly scoped")
+            or assessment.startswith("literal unqualified conjecture falsified")
             for assessment in assessments
         )
         points = 2 if covered else 0
@@ -635,7 +693,7 @@ def main() -> None:
         "theorem_3_3_dynamic": check_theorem_33_dynamic(),
         "theorem_4_2_high_probability": check_theorem_42_high_probability(),
         "theorem_5_2_lower_bound": check_theorem_52_lower_bound(),
-        "conjecture_5_3": classify_conjecture_53(),
+        "conjecture_5_3": check_conjecture_53_boundary(),
     }
     results = {
         "paper": "A Perturbation Approach to Unconstrained Linear Bandits",
